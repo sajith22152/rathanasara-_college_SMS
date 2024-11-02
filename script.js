@@ -5,7 +5,7 @@ const request = indexedDB.open("SchoolDB", 1);
 
 request.onupgradeneeded = function(event) {
     db = event.target.result;
-    db.createObjectStore("students", { keyPath: "admissionNumber" });
+    const studentStore = db.createObjectStore("students", { keyPath: "admissionNumber" });
 };
 
 request.onsuccess = function(event) {
@@ -24,6 +24,8 @@ document.getElementById('studentForm').onsubmit = function(event) {
     const student = {
         admissionNumber,
         studentName: document.getElementById('studentName').value,
+        admissionDate: document.getElementById('admissionDate').value,
+        admissionGrade: document.getElementById('admissionGrade').value,
         address: document.getElementById('address').value,
         dob: document.getElementById('dob').value,
         guardianName: document.getElementById('guardianName').value,
@@ -104,7 +106,7 @@ function displayStudents() {
 
         students.forEach(student => {
             const li = document.createElement('li');
-            li.textContent = `${student.admissionNumber} - ${student.studentName}`;
+            li.textContent = `${student.admissionNumber} - ${student.studentName} (${student.admissionGrade})`;
             
             const editButton = document.createElement('button');
             editButton.textContent = 'සංස්කරණය කරන්න';
@@ -131,6 +133,8 @@ function editStudent(admissionNumber) {
         if (student) {
             document.getElementById('admissionNumber').value = student.admissionNumber;
             document.getElementById('studentName').value = student.studentName;
+            document.getElementById('admissionDate').value = student.admissionDate;
+            document.getElementById('admissionGrade').value = student.admissionGrade;
             document.getElementById('address').value = student.address;
             document.getElementById('dob').value = student.dob;
             document.getElementById('guardianName').value = student.guardianName;
@@ -166,8 +170,6 @@ function deleteStudent(admissionNumber) {
     }
 }
 
-// ... (previous code remains unchanged)
-
 document.getElementById('searchButton').onclick = function() {
     const searchTerm = document.getElementById('searchInput').value.toLowerCase();
     const transaction = db.transaction(["students"], "readonly");
@@ -190,7 +192,7 @@ function displayFilteredStudents(students) {
 
     students.forEach(student => {
         const li = document.createElement('li');
-        li.textContent = `${student.admissionNumber} - ${student.studentName}`;
+        li.textContent = `${student.admissionNumber} - ${student.studentName} (${student.admissionGrade})`;
         
         const editButton = document.createElement('button');
         editButton.textContent = 'සංස්කරණය කරන්න';
@@ -200,47 +202,12 @@ function displayFilteredStudents(students) {
         deleteButton.textContent = 'මකන්න';
         deleteButton.onclick = () => deleteStudent(student.admissionNumber);
 
-        const printButton = document.createElement('button');
-        printButton.textContent = 'මුද්‍රණය කරන්න';
-        printButton.onclick = () => printSingleStudent(student);
-
         li.appendChild(editButton);
         li.appendChild(deleteButton);
-        li.appendChild(printButton);
         studentList.appendChild(li);
     });
 }
 
-function printSingleStudent(student) {
-    let printContent = "<h1>සිසුවාගේ සම්පූර්ණ තොරතුරු</h1>";
-    printContent += `
-        <div>
-            <strong>ඇතුලත් විමේ අංකය:</strong> ${student.admissionNumber}<br>
-            <strong>ළමයාගේ නම:</strong> ${student.studentName}<br>
-            <strong>ලිපිනය:</strong> ${student.address}<br>
-            <strong>උපන් දිනය:</strong> ${student.dob}<br>
-            <strong>දෙමපිය භාරකරුගේ නම:</strong> ${student.guardianName}<br>
-            <strong>දුරකථන අංකය:</strong> ${student.phoneNumber}<br>
-            <strong>සහොදර සහොදරියන් සිටින පන්තිය:</strong> ${student.siblingClass}<br>
-            <strong>සහොදර සහොදරියන්ගේ නම:</strong> ${student.siblingName}<br>
-            <strong>පාසලෙන් ඉවත් වූ දිනය:</strong> ${student.exitDate}<br>
-            <strong>පාසලෙන් ඉවත් වීමට හේතුව:</strong> ${student.leaveReason}<br>
-            <strong>දෙමාපිය භාරකරුගේ රැකියාව:</strong> ${student.guardianOccupation}<br>
-            <strong>අධ්‍යාපනය ලබන පළමු කාණ්ඩයේ විෂය:</strong> ${student.firstSubject}<br>
-            <strong>අධ්‍යාපනය ලබන දෙවන කාණ්ඩයේ විෂය:</strong> ${student.secondSubject}<br>
-            <strong>අධ්‍යාපනය ලබන තෙවන කාණ්ඩයේ විෂය:</strong> ${student.thirdSubject}
-        </div>
-    `;
-
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write('<html><head><title>සිසුවාගේ තොරතුරු මුද්‍රණය කරන්න</title></head><body>');
-    printWindow.document.write(printContent);
-    printWindow.document.write('</body></html>');
-    printWindow.document.close();
-    printWindow.print();
-}
-
-// ... (rest of the code remains unchanged)
 document.getElementById('backupButton').onclick = function() {
     const transaction = db.transaction(["students"], "readonly");
     const store = transaction.objectStore("students");
@@ -302,6 +269,8 @@ function printStudents(students) {
             <li>
                 <strong>ඇතුලත් විමේ අංකය:</strong> ${student.admissionNumber}<br>
                 <strong>ළමයාගේ නම:</strong> ${student.studentName}<br>
+                <strong>ඇතුලත් වූ දිනය:</strong> ${student.admissionDate}<br>
+                <strong>ඇතුලත් කළ ශ්‍රේණිය:</strong> ${student.admissionGrade}<br>
                 <strong>ලිපිනය:</strong> ${student.address}<br>
                 <strong>උපන් දිනය:</strong> ${student.dob}<br>
                 <strong>දෙමපිය භාරකරුගේ නම:</strong> ${student.guardianName}<br>
