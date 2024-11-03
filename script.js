@@ -259,60 +259,73 @@ document.getElementById('backupButton').onclick = async function() {
     }
 };
 
-// Enhanced restore functionality
+// Enhanced restore functionality with proper error handling and transaction management
 document.getElementById('restoreButton').onclick = function() {
     document.getElementById('fileInput').click();
 };
 
 document.getElementById('fileInput').onchange = async function(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
     try {
-        const file = event.target.files[0];
         const fileContent = await file.text();
         const backupData = JSON.parse(fileContent);
 
         // Validate backup file structure
         if (!backupData.data || !Array.isArray(backupData.data)) {
-            throw new Error("Invalid backup file format");
+            throw new Error("වලංගු නොවන backup ගොනුවකි");
         }
 
-        // Begin database transaction
-        const transaction = db.transaction(["students"], "readwrite");
-        const store = transaction.objectStore("students");
+        // Use a single transaction for the entire restore process
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(["students"], "readwrite");
+            const store = transaction.objectStore("students");
 
-        // Clear existing data
-        await new Promise((resolve, reject) => {
+            // Handle transaction errors
+            transaction.onerror = (event) => {
+                reject(new Error("Transaction error: " + event.target.error));
+            };
+
+            // Handle transaction completion
+            transaction.oncomplete = () => {
+                resolve();
+            };
+
+            // Clear existing data
             const clearRequest = store.clear();
-            clearRequest.onsuccess = () => resolve();
-            clearRequest.onerror = () => reject(clearRequest.error);
+            clearRequest.onsuccess = () => {
+                // After clearing, add all records one by one
+                backupData.data.forEach((student) => {
+                    store.add(student);
+                });
+            };
+            
+            clearRequest.onerror = (event) => {
+                reject(new Error("Clear error: " + event.target.error));
+            };
+        })
+        .then(() => {
+            alert(`දත්ත සාර්ථකව ප්‍රතිස්ථාපනය කරන ලදී. මුළු වාර්තා ගණන: ${backupData.data.length}`);
+            displayStudents(); // Refresh the display
+        })
+        .catch((error) => {
+            throw error; // Re-throw to be caught by outer catch block
         });
 
-        // Restore all records
-        for (const student of backupData.data) {
-            await new Promise((resolve, reject) => {
-                const request = store.add(student);
-                request.onsuccess = () => resolve();
-                request.onerror = () => reject(request.error);
-            });
-        }
-
-        alert(`දත්ත සාර්ථකව ප්‍රතිස්ථාපනය කරන ලදී. මුළු වාර්තා ගණන: ${backupData.data.length}`);
-        displayStudents();
     } catch (error) {
         console.error("Restore error:", error);
-        alert("දත්ත ප්‍රතිස්ථාපනය කිරීමේදී දෝෂයක් ඇති විය.");
+        alert(`දත්ත ප්‍රතිස්ථාපනය කිරීමේදී දෝෂයක් ඇති විය: ${error.message}`);
     }
+
+    // Clear the file input for future use
+    event.target.value = '';
 };
 
-document.getElementById('printButton').onclick = function() {
-    const transaction = db.transaction(["students"], "readonly");
-    const store = transaction.objectStore("students");
-    const request = store.getAll();
 
-    request.onsuccess = function(event) {
-        const students = event.target.result;
-        printStudents(students);
-    };
-};
+
+
+
 
 function printStudents(students) {
     let printContent = `
