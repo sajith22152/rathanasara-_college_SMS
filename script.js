@@ -208,47 +208,99 @@ function displayFilteredStudents(students) {
     });
 }
 
-document.getElementById('backupButton').onclick = function() {
-    const transaction = db.transaction(["students"], "readonly");
-    const store = transaction.objectStore("students");
-    const request = store.getAll();
+// Enhanced backup functionality
+document.getElementById('backupButton').onclick = async function() {
+    try {
+        const transaction = db.transaction(["students"], "readonly");
+        const store = transaction.objectStore("students");
+        
+        // Get all students from the database
+        const students = await new Promise((resolve, reject) => {
+            const request = store.getAll();
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
 
-    request.onsuccess = function(event) {
-        const students = event.target.result;
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(students));
-        const downloadAnchorNode = document.createElement('a');
-        downloadAnchorNode.setAttribute("href", dataStr);
-        downloadAnchorNode.setAttribute("download", "student_backup.json");
-        document.body.appendChild(downloadAnchorNode);
-        downloadAnchorNode.click();
-        downloadAnchorNode.remove();
-    };
+        // Create backup object with metadata
+        const backupData = {
+            version: "1.0",
+            timestamp: new Date().toISOString(),
+            schoolName: "රතනසාර විද්‍යාලය",
+            totalRecords: students.length,
+            data: students,
+            metadata: {
+                exportedBy: "School Management System",
+                exportDate: new Date().toLocaleDateString(),
+                exportTime: new Date().toLocaleTimeString()
+            }
+        };
+
+        // Convert to JSON and create blob
+        const jsonString = JSON.stringify(backupData, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        
+        // Generate filename with timestamp
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = `student_backup_${timestamp}.json`;
+
+        // Create download link and trigger download
+        const downloadLink = document.createElement('a');
+        downloadLink.href = URL.createObjectURL(blob);
+        downloadLink.download = filename;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        URL.revokeObjectURL(downloadLink.href);
+
+        alert("දත්ත සාර්ථකව backup කර ඇත.");
+    } catch (error) {
+        console.error("Backup error:", error);
+        alert("දත්ත backup කිරීමේදී දෝෂයක් ඇති විය.");
+    }
 };
 
+// Enhanced restore functionality
 document.getElementById('restoreButton').onclick = function() {
     document.getElementById('fileInput').click();
 };
 
-document.getElementById('fileInput').onchange = function(event) {
-    const file = event.target.files[0];
-    const reader = new FileReader();
+document.getElementById('fileInput').onchange = async function(event) {
+    try {
+        const file = event.target.files[0];
+        const fileContent = await file.text();
+        const backupData = JSON.parse(fileContent);
 
-    reader.onload = function(e) {
-        const students = JSON.parse(e.target.result);
+        // Validate backup file structure
+        if (!backupData.data || !Array.isArray(backupData.data)) {
+            throw new Error("Invalid backup file format");
+        }
+
+        // Begin database transaction
         const transaction = db.transaction(["students"], "readwrite");
         const store = transaction.objectStore("students");
 
-        students.forEach(student => {
-            store.put(student);
+        // Clear existing data
+        await new Promise((resolve, reject) => {
+            const clearRequest = store.clear();
+            clearRequest.onsuccess = () => resolve();
+            clearRequest.onerror = () => reject(clearRequest.error);
         });
 
-        transaction.oncomplete = function() {
-            alert("දත්ත සාර්ථකව ප්‍රතිස්ථාපනය කරන ලදී.");
-            displayStudents();
-        };
-    };
+        // Restore all records
+        for (const student of backupData.data) {
+            await new Promise((resolve, reject) => {
+                const request = store.add(student);
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error);
+            });
+        }
 
-    reader.readAsText(file);
+        alert(`දත්ත සාර්ථකව ප්‍රතිස්ථාපනය කරන ලදී. මුළු වාර්තා ගණන: ${backupData.data.length}`);
+        displayStudents();
+    } catch (error) {
+        console.error("Restore error:", error);
+        alert("දත්ත ප්‍රතිස්ථාපනය කිරීමේදී දෝෂයක් ඇති විය.");
+    }
 };
 
 document.getElementById('printButton').onclick = function() {
@@ -263,35 +315,104 @@ document.getElementById('printButton').onclick = function() {
 };
 
 function printStudents(students) {
-    let printContent = "<h1>සිසුන්ගේ සම්පූර්ණ තොරතුරු</h1><ul>";
-    students.forEach(student => {
+    let printContent = `
+        <html>
+        <head>
+            <title>සිසුන්ගේ සම්පූර්ණ තොරතුරු</title>
+            <style>
+                body { 
+                    font-family: Arial, sans-serif; 
+                    padding: 20px;
+                    line-height: 1.6;
+                }
+                .student-info { 
+                    border: 1px solid #ccc; 
+                    margin: 10px 0; 
+                    padding: 15px;
+                    page-break-inside: avoid;
+                }
+                .header { 
+                    text-align: center; 
+                    margin-bottom: 20px; 
+                    border-bottom: 2px solid #000;
+                    padding-bottom: 10px;
+                }
+                .metadata { 
+                    margin-bottom: 20px;
+                    background: #f5f5f5;
+                    padding: 10px;
+                }
+                .field-label {
+                    font-weight: bold;
+                    min-width: 200px;
+                    display: inline-block;
+                }
+                @media print {
+                    .student-info {
+                        page-break-inside: avoid;
+                    }
+                    .header {
+                        position: fixed;
+                        top: 0;
+                        width: 100%;
+                    }
+                    .metadata {
+                        margin-top: 100px;
+                    }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>රතනසාර විද්‍යාලය</h1>
+                <h2>සිසුන්ගේ සම්පූර්ණ තොරතුරු</h2>
+            </div>
+            <div class="metadata">
+                <p><span class="field-label">මුළු සිසුන් ගණන:</span> ${students.length}</p>
+                <p><span class="field-label">වාර්තාව මුද්‍රණය කළ දිනය:</span> ${new Date().toLocaleDateString()}</p>
+                <p><span class="field-label">වාර්තාව මුද්‍රණය කළ වේලාව:</span> ${new Date().toLocaleTimeString()}</p>
+            </div>
+    `;
+
+    students.forEach((student, index) => {
         printContent += `
-            <li>
-                <strong>ඇතුලත් විමේ අංකය:</strong> ${student.admissionNumber}<br>
-                <strong>ළමයාගේ නම:</strong> ${student.studentName}<br>
-                <strong>ඇතුලත් වූ දිනය:</strong> ${student.admissionDate}<br>
-                <strong>ඇතුලත් කළ ශ්‍රේණිය:</strong> ${student.admissionGrade}<br>
-                <strong>ලිපිනය:</strong> ${student.address}<br>
-                <strong>උපන් දිනය:</strong> ${student.dob}<br>
-                <strong>දෙමපිය භාරකරුගේ නම:</strong> ${student.guardianName}<br>
-                <strong>දුරකථන අංකය:</strong> ${student.phoneNumber}<br>
-                <strong>සහොදර සහොදරියන් සිටින පන්තිය:</strong> ${student.siblingClass}<br>
-                <strong>සහොදර සහොදරියන්ගේ නම:</strong> ${student.siblingName}<br>
-                <strong>පාසලෙන් ඉවත් වූ දිනය:</strong> ${student.exitDate}<br>
-                <strong>පාසලෙන් ඉවත් වීමට හේතුව:</strong> ${student.leaveReason}<br>
-                <strong>දෙමාපිය භාරකරුගේ රැකියාව:</strong> ${student.guardianOccupation}<br>
-                <strong>අධ්‍යාපනය ලබන පළමු කාණ්ඩයේ විෂය:</strong> ${student.firstSubject}<br>
-                <strong>අධ්‍යාපනය ලබන දෙවන කාණ්ඩයේ විෂය:</strong> ${student.secondSubject}<br>
-                <strong>අධ්‍යාපනය ලබන තෙවන කාණ්ඩයේ විෂය:</strong> ${student.thirdSubject}
-            </li>
+            <div class="student-info">
+                <h3>${index + 1}. ${student.studentName}</h3>
+                <p><span class="field-label">ඇතුලත් විමේ අංකය:</span> ${student.admissionNumber}</p>
+                <p><span class="field-label">ඇතුලත් වූ දිනය:</span> ${student.admissionDate}</p>
+                <p><span class="field-label">ඇතුලත් කළ ශ්‍රේණිය:</span> ${student.admissionGrade}</p>
+                <p><span class="field-label">ලිපිනය:</span> ${student.address}</p>
+                <p><span class="field-label">උපන් දිනය:</span> ${student.dob}</p>
+                <p><span class="field-label">දෙමපිය භාරකරුගේ නම:</span> ${student.guardianName}</p>
+                <p><span class="field-label">දුරකථන අංකය:</span> ${student.phoneNumber}</p>
+                <p><span class="field-label">සහොදර සහොදරියන් සිටින පන්තිය:</span> ${student.siblingClass}</p>
+                <p><span class="field-label">සහොදර සහොදරියන්ගේ නම:</span> ${student.siblingName}</p>
+                <p><span class="field-label">පාසලෙන් ඉවත් වූ දිනය:</span> ${student.exitDate}</p>
+                <p><span class="field-label">පාසලෙන් ඉවත් වීමට හේතුව:</span> ${student.leaveReason}</p>
+                <p><span class="field-label">දෙමාපිය භාරකරුගේ රැකියාව:</span> ${student.guardianOccupation}</p>
+                <p><span class="field-label">අධ්‍යාපනය ලබන පළමු කාණ්ඩයේ විෂය:</span> ${student.firstSubject}</p>
+                <p><span class="field-label">අධ්‍යාපනය ලබන දෙවන කාණ්ඩයේ විෂය:</span> ${student.secondSubject}</p>
+                <p><span class="field-label">අධ්‍යාපනය ලබන තෙවන කාණ්ඩයේ විෂය:</span> ${student.thirdSubject}</p>
+            </div>
         `;
     });
-    printContent += "</ul>";
+
+    printContent += `
+            <div style="text-align: center; margin-top: 20px; font-size: 12px;">
+                <p>මෙම වාර්තාව පරිගණක ජනිත වාර්තාවකි</p>
+                <p>© ${new Date().getFullYear()} රතනසාර විද්‍යාලය</p>
+            </div>
+        </body>
+        </html>
+    `;
 
     const printWindow = window.open('', '_blank');
-    printWindow.document.write('<html><head><title>මුද්‍රණය කරන්න</title></head><body>');
     printWindow.document.write(printContent);
-    printWindow.document.write('</body></html>');
     printWindow.document.close();
-    printWindow.print();
+    printWindow.focus();
+    
+    // Add slight delay to ensure proper loading of styles
+    setTimeout(() => {
+        printWindow.print();
+    }, 500);
 }
